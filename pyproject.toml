@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools", "wheel", "pybind11"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "swapcore"
+version = "0.1.0"
+dependencies = ["pybind11"]
+
+[tool.setuptools]
+packages = ["swapcore"]
+package-dir = {"" = "."}
+
+[tool.setuptools.packages.find]
+where = ["."]
