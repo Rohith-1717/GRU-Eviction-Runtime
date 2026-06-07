@@ -17,26 +17,27 @@ FaultHandler::FaultHandler(MemoryManager* mgr)
     , manager(mgr)
     , regionBase(nullptr)
     , regionSize(0){
-    uffd = static_cast<int>(syscall(__NR_userfaultfd, 0));
+    uffd = static_cast<int>(syscall(__NR_userfaultfd, 0));  // kernel managed fault notification object
     if (uffd == -1){
         std::cerr << "Failed to create userfaultfd" << std::endl;
         exit(1);
     }
 
-    struct uffdio_api api;
+    struct uffdio_api api;  // for telling the kernel you want to use the userfaultfd api
     api.api = UFFD_API;
     api.features = 0;
-    if (ioctl(uffd, UFFDIO_API, &api) == -1){
+    if (ioctl(uffd, UFFDIO_API, &api) == -1){  
         std::cerr << "UFFDIO_API failed" << std::endl;
         exit(1);
     }
 
-    zeroPage = mmap(nullptr, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    // this is a fresh uninitizalized page 
+    zeroPage = mmap(nullptr, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0); //
     if (zeroPage == MAP_FAILED){
         std::cerr << "Failed to allocate zero page" << std::endl;
         exit(1);
     }
-    memset(zeroPage, 0, PAGE_SIZE);
+    memset(zeroPage, 0, PAGE_SIZE); // creates an all zero page
 }
 
 FaultHandler::~FaultHandler(){
@@ -51,16 +52,18 @@ FaultHandler::~FaultHandler(){
     }
 }
 
+// We have the usefaultd kernel object
+// now we want to register that kernel object with our virtual address space we got from mmap
 void FaultHandler::registerRegion(void* addr, size_t size){
     regionBase = addr;
     regionSize = size;
-    size_t pageCount = size / PAGE_SIZE;
-    manager->initPageTable(pageCount);
+    size_t pageCount = size/PAGE_SIZE;
+    manager->initPageTable(pageCount);  // this initializes the page table
 
     struct uffdio_register reg;
     reg.range.start = (unsigned long)addr;
     reg.range.len = size;
-    reg.mode = UFFDIO_REGISTER_MODE_MISSING;
+    reg.mode = UFFDIO_REGISTER_MODE_MISSING; // intercept the page faults for the pages in this region
     if (ioctl(uffd, UFFDIO_REGISTER, &reg) == -1){
         std::cerr << "UFFDIO_REGISTER failed" << std::endl;
         exit(1);
@@ -86,19 +89,19 @@ MemoryManager* FaultHandler::getManager(){
 
 void FaultHandler::handleFaults(){
     while (running){
-        struct pollfd pfd = {uffd, POLLIN, 0};
-        int ret = poll(&pfd, 1, 1000);
+        struct pollfd pfd = {uffd, POLLIN, 0}; // creates a poll desciptor
+        int ret = poll(&pfd, 1, 1000); // waits for a page fault with a timeout of 1000ms, i.e. it checks every 1000 ms if there is a page fault
         if (ret == -1){
             std::cerr << "Poll failed" << std::endl;
             break;
         }
         if (ret == 0)
             continue;
-        if (pfd.revents & POLLIN){
+        if (pfd.revents & POLLIN){  // userfaultfd has a message for you, probably a page fault
             struct uffd_msg msg;
             ssize_t nread = read(uffd, &msg, sizeof(msg));
             if (nread == 0){
-                std::cerr << "EOF on userfaultfd" << std::endl;
+                std::cerr << "EOF on userfaultfd" << std::endl; // userfaultfd closed, shouldnt happen, and kernel disconnects us if it does, so we just exit the loop
                 break;
             }
             if (nread == -1){
@@ -110,28 +113,34 @@ void FaultHandler::handleFaults(){
                 continue;
             }
 
-            void* faultAddr = (void*)msg.arg.pagefault.address;
+            void* faultAddr = (void*)msg.arg.pagefault.address; //  the virtual address that caused a fault
+            // faultAddr is the address that caused the page fault, but SwapCore manages memory in terms of pages
+            // so we calculate the starting address of the page where the fault happened which is pageAddr
+            // using that we calculate the vpn
             void* pageAddr = (void*)((unsigned long)faultAddr & ~(PAGE_SIZE - 1));
             u64 vpn = ((u64)faultAddr - (u64)regionBase) / PAGE_SIZE;
             assert(vpn < regionSize / PAGE_SIZE);
 
-            auto& entry = manager->pageTbl().getEntry(vpn);
-            auto faultStart = std::chrono::high_resolution_clock::now();
+            auto& entry = manager->pageTbl().getEntry(vpn); 
+            auto faultStart = std::chrono::high_resolution_clock::now(); // for latency
             if (!entry.resident){
-                u32 frame = manager->allocFrame(vpn);
-                manager->loadPage(vpn, frame);
+                u32 frame = manager->allocFrame(vpn);   // allocates a frame in our frame vector
+                manager->loadPage(vpn, frame); // loads the page data into our frame from our frame vector
                 struct uffdio_copy copy;
                 copy.src = (unsigned long)manager->frameData(frame);
                 copy.dst = (unsigned long)pageAddr;
                 copy.len = PAGE_SIZE;
                 copy.mode = 0;
                 copy.copy = 0;
+                // NOW THIS IS IMPORTANT
+                // this ioctl with UFFDIO_COPY copies the data from our frame from the frame vector to an actual frame in the RAM
                 if (ioctl(uffd, UFFDIO_COPY, &copy) == -1){
                     std::cerr << "UFFDIO_COPY failed" << std::endl;
                     break;
                 }
                 std::cout << "Fault at VPN " << vpn << ", loaded frame " << frame << "\n";
-            } else{
+            } 
+            else{
                 manager->touchPage(vpn);
                 struct uffdio_copy copy;
                 copy.src = (unsigned long)manager->frameData(entry.frameIndex);
@@ -146,7 +155,7 @@ void FaultHandler::handleFaults(){
                 std::cout << "Re-fault for resident VPN " << vpn << "\n";
             }
 
-            auto faultEnd = std::chrono::high_resolution_clock::now();
+            auto faultEnd = std::chrono::high_resolution_clock::now(); // for latency again
             manager->addFaultLatencyNs(std::chrono::duration_cast<std::chrono::nanoseconds>(faultEnd - faultStart).count());
         }
     }

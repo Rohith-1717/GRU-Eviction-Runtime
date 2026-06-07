@@ -1,6 +1,9 @@
 #include "EvictionManager.hpp"
 #include <cassert>
 
+// this is for LRU AND CLOCK
+// Learned eviction is in MemoryManager.cpp since it needs to interact with the predictor
+
 EvictionManager::EvictionManager(EvictionPolicy policy_) : policy(policy_), clockHand(0){}
 
 void EvictionManager::touch(u64 vpn, PageMeta& entry, u64 globalTime){

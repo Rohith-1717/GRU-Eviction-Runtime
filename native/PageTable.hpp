@@ -4,7 +4,7 @@
 #include <vector>
 #include <cassert>
 
-struct PageMeta{
+struct PageMeta{  
     bool resident = false;
     bool dirty = false;
     bool reference = false;
