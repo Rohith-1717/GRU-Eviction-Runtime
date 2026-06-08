@@ -4,7 +4,7 @@
 #include <vector>
 #include <cassert>
 
-struct PageMeta{  
+struct PageMeta{
     bool resident = false;
     bool dirty = false;
     bool reference = false;
@@ -13,6 +13,7 @@ struct PageMeta{
     u64 lastAccess = 0;
     u64 previousAccess = 0;
     u64 frequency = 0;
+    u64 loadTimestamp = 0;
     float predictedReuse = 0.0f;
 };
 
