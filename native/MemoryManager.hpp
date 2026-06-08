@@ -14,6 +14,7 @@ class MemoryManager{
 public:
     explicit MemoryManager(EvictionPolicy policy = EvictionPolicy::LRU, bool learned = true);
     ~MemoryManager();
+
     void initPageTable(size_t num_pages);
     u32 allocFrame(u64 vpn);
     void freeFrame(u32 frameIndex);
@@ -29,7 +30,6 @@ public:
     bool learnedEvictionActive() const;
 
 private:
-
     u64 chooseLearnedVictim();
     float computeLearnedScore(u64 vpn);
     PageTable pageTbl_;
@@ -42,11 +42,8 @@ private:
     float learnedRecencyWeight;
     float learnedFrequencyWeight;
     float learnedPredictionWeight;
-
     u64 accessCounter;
-
     uint64_t learnedEvictions;
-
     uint64_t faultNs;
     uint64_t swapWriteNs;
     uint64_t swapReadNs;
