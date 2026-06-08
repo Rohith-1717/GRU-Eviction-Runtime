@@ -31,7 +31,7 @@ public:
 private:
 
     u64 chooseLearnedVictim();
-    float computeLearnedScore(const PageMeta& entry, u64 vpn);
+    float computeLearnedScore(u64 vpn);
     PageTable pageTbl_;
     std::vector<u8> frames;
     std::queue<u32> freeFrames;
