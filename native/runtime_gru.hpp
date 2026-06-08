@@ -1,17 +1,20 @@
 #pragma once
 
 #include <cstddef>
-#include <vector>
 
 class RuntimeGRU{
 public:
-    static constexpr size_t INPUT_SIZE = 5;
-    static constexpr size_t HIDDEN_SIZE = 32;
-    static constexpr size_t OUTPUT_SIZE = 1;
+    static constexpr size_t ACCESS_FEATURE_SIZE = 5;
+    static constexpr size_t PAGE_FEATURE_SIZE = 4;
+    static constexpr size_t HIDDEN_SIZE = 64;
+    static constexpr size_t FC1_SIZE = 64;
+    static constexpr size_t FC2_SIZE = 32;
+    RuntimeGRU();
+    void resetState();
+    void step(const float* accessFeatures);
+    float predictReuseProbability(const float* pageFeatures) const;
 
-    RuntimeGRU() = default;
-    float predict(float vpn, float accessDelta, float accessType, float timestamp, float reuseDistance) const;
-    float predictLogit(const float* sequence, size_t seqLen) const;
-    float predictSequence(const float* sequence, size_t seqLen) const;
-    float predictSequence(const std::vector<float>& sequence, size_t seqLen) const;
+private:
+
+    float hidden_[HIDDEN_SIZE];
 };
