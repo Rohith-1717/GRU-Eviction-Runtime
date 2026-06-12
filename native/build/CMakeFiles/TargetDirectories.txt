@@ -1,3 +1,0 @@
-/home/rohithp/Documents/Swap-Core/SwapCore/native/build/CMakeFiles/swapcore_native.dir
-/home/rohithp/Documents/Swap-Core/SwapCore/native/build/CMakeFiles/edit_cache.dir
-/home/rohithp/Documents/Swap-Core/SwapCore/native/build/CMakeFiles/rebuild_cache.dir
