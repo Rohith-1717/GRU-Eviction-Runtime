@@ -40,7 +40,7 @@ void MemoryManager::initPageTable(size_t num_pages){
 }
 
 u32 MemoryManager::allocBuffer(u64 vpn){
-    if(!freeBuffers.empty()){ // If we have free page buffers, just use one
+    if(!freeBuffers.empty()){ 
         u32 idx = freeBuffers.front();
         freeBuffers.pop();
         cout << "Allocated buffer " << idx << " for VPN " << vpn << endl;
