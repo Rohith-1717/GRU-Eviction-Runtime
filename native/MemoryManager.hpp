@@ -14,14 +14,13 @@ class MemoryManager{
 public:
     explicit MemoryManager(EvictionPolicy policy = EvictionPolicy::LRU, bool learned = true);
     ~MemoryManager();
-
     void initPageTable(size_t num_pages);
-    u32 allocFrame(u64 vpn);
-    void freeFrame(u32 frameIndex);
-    void* frameData(u32 frameIndex);
+    u32 allocBuffer(u64 vpn);
+    void freeBuffer(u32 bufferSlot);
+    void* bufferData(u32 bufferSlot);
     PageTable& pageTbl();
     void touchPage(u64 vpn);
-    void loadPage(u64 vpn, u32 frameIndex);
+    void loadPage(u64 vpn, u32 bufferSlot);
     void addFaultLatencyNs(uint64_t ns);
     uint64_t faultLatencyNs() const;
     uint64_t swapWriteLatencyNs() const;
@@ -32,18 +31,27 @@ public:
 private:
     u64 chooseLearnedVictim();
     float computeLearnedScore(u64 vpn);
+
     PageTable pageTbl_;
-    std::vector<u8> frames;
-    std::queue<u32> freeFrames;
+
+    // This is the pool of page-sized buffers used before UFFDIO_COPY
+    std::vector<u8> pageBufferPool;
+    std::queue<u32> freeBuffers;
+
     SwapManager swapMgr;
     EvictionManager eviction;
     RuntimeGRU learnedPredictor;
+
     bool learnedEvictionEnabled;
+
     float learnedRecencyWeight;
     float learnedFrequencyWeight;
     float learnedPredictionWeight;
+
     u64 accessCounter;
+
     uint64_t learnedEvictions;
+
     uint64_t faultNs;
     uint64_t swapWriteNs;
     uint64_t swapReadNs;
