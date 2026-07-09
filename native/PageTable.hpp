@@ -8,7 +8,7 @@ struct PageMeta{
     bool resident = false;
     bool dirty = false;
     bool reference = false;
-    u32 frameIndex = 0;
+    u32 bufferSlot = 0;
     u32 swapSlot = SWAP_SLOT_INVALID;
     u64 lastAccess = 0;
     u64 previousAccess = 0;
