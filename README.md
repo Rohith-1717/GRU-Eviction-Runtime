@@ -76,57 +76,6 @@ The project records:
 
 ---
 
-## Building
-
-```bash
-git clone <repository>
-
-cd CustomEvictor
-
-mkdir build
-cd build
-
-cmake ..
-
-make
-```
-
----
-
-## Running
-
-Train the GRU model
-
-```bash
-python trainer/train.py
-```
-
-Export the trained weights
-
-```bash
-python trainer/export_weights.py
-```
-
-Run the learned policy
-
-```bash
-./CustomEvictor --policy learned
-```
-
-Run LRU
-
-```bash
-./CustomEvictor --policy lru
-```
-
-Run Clock
-
-```bash
-./CustomEvictor --policy clock
-```
-
----
-
 ## Future Improvements
 
 Maybe involve INTEL PINs LOL
