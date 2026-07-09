@@ -1,4 +1,3 @@
-# CustomEvictor
 
 ## Overview
 
@@ -19,17 +18,6 @@ Unlike conventional algorithms that rely solely on recency or reference bits, th
 - Swap-file-backed virtual memory
 - Runtime collection of latency and swap statistics
 - Modular architecture for experimenting with replacement algorithms
-
-
-
-
-## Swap Management
-
-Modified pages are written to `swapfile.bin` using `pwrite()`.
-
-Each evicted page is assigned a swap slot.
-
-Whenever a swapped-out page is accessed again, it is restored using `pread()`.
 
 ---
 
@@ -78,7 +66,7 @@ The project records:
 
 ## Future Improvements
 
-Maybe involve INTEL PINs LOL
+Maybe involve INTEL PINs for generating traces LOL
 
 ---
 
