@@ -10,7 +10,7 @@ using namespace std;
 
 // initialize the memory manager with the given policy
 MemoryManager::MemoryManager(EvictionPolicy policy, bool learned)
-    : frames(NUM_FRAMES * PAGE_SIZE, 0),
+    : pageBufferPool(NUM_FRAMES * PAGE_SIZE, 0),
       swapMgr(1024, "swapfile.bin"),
       eviction(policy),
       learnedPredictor(),
@@ -25,9 +25,9 @@ MemoryManager::MemoryManager(EvictionPolicy policy, bool learned)
       swapReadNs(0){
 
     for(u32 i = 0; i < NUM_FRAMES; ++i){
-        freeFrames.push(i); // Initially, all frames are free (duh)
+        freeBuffers.push(i); // Initially, all page buffers are free
     }
-    cout << "MemoryManager initialized with " << NUM_FRAMES << " frames" << endl;
+    cout << "MemoryManager initialized with " << NUM_FRAMES << " page buffers" << endl;
 }
 
 MemoryManager::~MemoryManager(){
@@ -39,11 +39,11 @@ void MemoryManager::initPageTable(size_t num_pages){
     cout << "Page table initialized for " << num_pages << " pages" << endl;
 }
 
-u32 MemoryManager::allocFrame(u64 vpn){
-    if(!freeFrames.empty()){ // If we have free frames, just use one, so no faults :)
-        u32 idx = freeFrames.front();
-        freeFrames.pop();
-        cout << "Allocated frame " << idx << " for VPN " << vpn << endl;
+u32 MemoryManager::allocBuffer(u64 vpn){
+    if(!freeBuffers.empty()){ // If we have free page buffers, just use one
+        u32 idx = freeBuffers.front();
+        freeBuffers.pop();
+        cout << "Allocated buffer " << idx << " for VPN " << vpn << endl;
         return idx;
     }
 
@@ -51,37 +51,41 @@ u32 MemoryManager::allocFrame(u64 vpn){
     u64 victim_vpn = learnedEvictionEnabled ? chooseLearnedVictim() : eviction.choose_victim(pageTbl_);
     auto& victim_entry = pageTbl_.getEntry(victim_vpn); // btw note that this is not a copy, it is a reference
     // so since its a reference, the modifications affect the real page table
-    assert(victim_entry.resident); // this checks if the victim page is actually in the RAM
-    u32 frameIndex = victim_entry.frameIndex; // this is the frame index of the victim page, which we'll reuse for the new page
-    cout << "Evicting VPN " << victim_vpn << " from frame " << frameIndex << endl;
+    assert(victim_entry.resident); // this checks if the victim page is actually resident
+    u32 bufferSlot = victim_entry.bufferSlot; // reuse this buffer for the incoming page
+
+    cout << "Evicting VPN " << victim_vpn << " from buffer " << bufferSlot << endl;
+
     if(victim_entry.dirty){
         if(victim_entry.swapSlot == SWAP_SLOT_INVALID){
             victim_entry.swapSlot = swapMgr.allocSlot();
         }
 
         auto start = std::chrono::high_resolution_clock::now();
-        swapMgr.writePage(victim_entry.swapSlot, frameData(frameIndex)); // we write the victim page's data to swap before we reuse its frame for the new page
+        swapMgr.writePage(victim_entry.swapSlot, bufferData(bufferSlot)); // write the page buffer to swap before reusing it
         auto end = std::chrono::high_resolution_clock::now();
+
         swapWriteNs += std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+
         cout << "Wrote dirty VPN " << victim_vpn << " to swap slot " << victim_entry.swapSlot << endl;
     }
 
     victim_entry.resident = false;
-    victim_entry.frameIndex = SWAP_SLOT_INVALID;
+    victim_entry.bufferSlot = SWAP_SLOT_INVALID;
     victim_entry.dirty = false;
     victim_entry.reference = false;
 
-    return frameIndex;
+    return bufferSlot;
 }
 
-void MemoryManager::freeFrame(u32 frameIndex){
-    freeFrames.push(frameIndex);
-    cout << "Freed frame " << frameIndex << endl;
+void MemoryManager::freeBuffer(u32 bufferSlot){
+    freeBuffers.push(bufferSlot);
+    cout << "Freed buffer " << bufferSlot << endl;
 }
 
-void* MemoryManager::frameData(u32 frameIndex){ // returns the pointer to the data of the given frame index
-    assert(frameIndex < NUM_FRAMES);
-    return frames.data() + frameIndex * PAGE_SIZE; // useful for lets say swapping, where we might need to write the data of a frame to the swap file
+void* MemoryManager::bufferData(u32 bufferSlot){ // returns the pointer to the data of the given page buffer
+    assert(bufferSlot < NUM_FRAMES);
+    return pageBufferPool.data() + bufferSlot * PAGE_SIZE; // useful for swapping pages to and from disk
 }
 
 PageTable& MemoryManager::pageTbl(){
@@ -93,7 +97,9 @@ PageTable& MemoryManager::pageTbl(){
 // useful for GRU
 void MemoryManager::touchPage(u64 vpn){
     assert(vpn < pageTbl_.size());
+
     auto& entry = pageTbl_.getEntry(vpn);
+
     entry.previousAccess = entry.lastAccess;
     entry.lastAccess = ++accessCounter;
     entry.frequency += 1;
@@ -110,22 +116,27 @@ void MemoryManager::touchPage(u64 vpn){
     eviction.touch(vpn, entry, accessCounter);
 }
 
-void MemoryManager::loadPage(u64 vpn, u32 frameIndex){
+void MemoryManager::loadPage(u64 vpn, u32 bufferSlot){
     auto& entry = pageTbl_.getEntry(vpn);
+
     if(entry.swapSlot != SWAP_SLOT_INVALID){
         auto start = std::chrono::high_resolution_clock::now();
-        swapMgr.readPage(entry.swapSlot, frameData(frameIndex));
+        swapMgr.readPage(entry.swapSlot, bufferData(bufferSlot));
         auto end = std::chrono::high_resolution_clock::now();
+
         swapReadNs += std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+
         cout << "Read VPN " << vpn << " from swap slot " << entry.swapSlot << endl;
     }
     else{
-        std::memset(frameData(frameIndex), 0, PAGE_SIZE);
+        std::memset(bufferData(bufferSlot), 0, PAGE_SIZE);
     }
+
     entry.resident = true;
-    entry.frameIndex = frameIndex;
+    entry.bufferSlot = bufferSlot;
     entry.dirty = false;
     entry.loadTimestamp = accessCounter;
+
     touchPage(vpn);
 }
 
@@ -139,6 +150,7 @@ uint64_t MemoryManager::faultLatencyNs() const{ // this is the nanoseconds spent
 
 float MemoryManager::computeLearnedScore(u64 vpn){
     auto& entry = pageTbl_.getEntry(vpn);
+
     float pageFeatures[RuntimeGRU::PAGE_FEATURE_SIZE] = {
         float(accessCounter - entry.lastAccess),
         float(entry.frequency),
@@ -148,8 +160,10 @@ float MemoryManager::computeLearnedScore(u64 vpn){
 
     float mlScore = learnedPredictor.predictReuseProbability(pageFeatures);
     entry.predictedReuse = mlScore;
+
     float recency = float(accessCounter - entry.lastAccess);
     float frequencyPenalty = 1.0f / (1.0f + float(entry.frequency));
+
     float score = learnedRecencyWeight * recency;
     score += learnedFrequencyWeight * frequencyPenalty;
     score += learnedPredictionWeight * (1.0f - mlScore);
@@ -164,13 +178,18 @@ u64 MemoryManager::chooseLearnedVictim(){
     u64 victim_vpn = SWAP_SLOT_INVALID; // no victim selected yet
     // so we initialize with a invalid sentinel value
     float best_score = -std::numeric_limits<float>::infinity(); // basically the lowest score possible
+
     size_t num_pages = pageTbl_.size();
+
     for(u64 vpn = 0; vpn < num_pages; ++vpn){
         const auto& entry = pageTbl_.getEntry(vpn);
+
         if(!entry.resident){
             continue;
         }
+
         float score = computeLearnedScore(vpn);
+
         if(score > best_score){
             best_score = score;
             victim_vpn = vpn;
@@ -180,7 +199,9 @@ u64 MemoryManager::chooseLearnedVictim(){
     if(victim_vpn == SWAP_SLOT_INVALID){
         return eviction.choose_victim(pageTbl_);
     }
+
     learnedEvictions += 1;
+
     return victim_vpn;
 }
 
