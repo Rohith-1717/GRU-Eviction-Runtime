@@ -143,3 +143,80 @@ void MemoryManager::evictPage(u64 vpn, void* pageAddr){
 
     residentPages--;
 }
+
+void MemoryManager::addFaultLatencyNs(uint64_t ns){
+    faultNs += ns;
+}
+
+uint64_t MemoryManager::faultLatencyNs() const{
+    return faultNs;
+}
+
+float MemoryManager::computeLearnedScore(u64 vpn){
+    auto& entry = pageTbl_.getEntry(vpn);
+
+    float pageFeatures[RuntimeGRU::PAGE_FEATURE_SIZE] = {
+        float(accessCounter - entry.lastAccess),
+        float(entry.frequency),
+        entry.dirty ? 1.0f : 0.0f,
+        float(accessCounter - entry.loadTimestamp)
+    };
+
+    float mlScore = learnedPredictor.predictReuseProbability(pageFeatures);
+
+    entry.predictedReuse = mlScore;
+
+    float recency = float(accessCounter - entry.lastAccess);
+    float frequencyPenalty = 1.0f / (1.0f + float(entry.frequency));
+
+    float score = learnedRecencyWeight * recency;
+    score += learnedFrequencyWeight * frequencyPenalty;
+    score += learnedPredictionWeight * (1.0f - mlScore);
+
+    return score;
+}
+
+u64 MemoryManager::chooseLearnedVictim(){
+    u64 victim = SWAP_SLOT_INVALID;
+    float bestScore = -std::numeric_limits<float>::infinity();
+
+    for(u64 vpn = 0; vpn < pageTbl_.size(); ++vpn){
+
+        const auto& entry = pageTbl_.getEntry(vpn);
+
+        if(!entry.resident){
+            continue;
+        }
+
+        float score = computeLearnedScore(vpn);
+
+        if(score > bestScore){
+            bestScore = score;
+            victim = vpn;
+        }
+    }
+
+    if(victim == SWAP_SLOT_INVALID){
+        return eviction.choose_victim(pageTbl_);
+    }
+
+    learnedEvictions++;
+
+    return victim;
+}
+
+uint64_t MemoryManager::swapWriteLatencyNs() const{
+    return swapWriteNs;
+}
+
+uint64_t MemoryManager::swapReadLatencyNs() const{
+    return swapReadNs;
+}
+
+uint64_t MemoryManager::learnedEvictionCount() const{
+    return learnedEvictions;
+}
+
+bool MemoryManager::learnedEvictionActive() const{
+    return learnedEvictionEnabled;
+}
