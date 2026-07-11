@@ -2,13 +2,13 @@
 
 #include "Common.hpp"
 #include "MemoryManager.hpp"
-#include <vector>
+
 #include <thread>
-#include <linux/userfaultfd.h>
+#include <vector>
 
 class FaultHandler{
 public:
-    FaultHandler(MemoryManager* manager);
+    explicit FaultHandler(MemoryManager* mgr);
     ~FaultHandler();
     void registerRegion(void* addr, size_t size);
     void start();
@@ -16,13 +16,13 @@ public:
     MemoryManager* getManager();
 
 private:
+    void handleFaults();
     int uffd;
-    std::thread handlerThread;
-    std::vector<struct uffdio_register> regions;
     bool running;
     void* zeroPage;
     MemoryManager* manager;
     void* regionBase;
     size_t regionSize;
-    void handleFaults();
+    std::vector<struct uffdio_register> regions;
+    std::thread handlerThread;
 };
