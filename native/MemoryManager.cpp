@@ -4,9 +4,6 @@
 #include <cassert>
 #include <cstring>
 #include <limits>
-#include <sys/ioctl.h>
-#include <sys/mman.h>
-#include <linux/userfaultfd.h>
 
 using namespace std;
 
@@ -35,7 +32,6 @@ MemoryManager::~MemoryManager(){
 void MemoryManager::initPageTable(size_t num_pages){
     pageTbl_.resize(num_pages);
     bufferPool.resize(num_pages * PAGE_SIZE, 0);
-
     for(u32 vpn = 0; vpn < num_pages; ++vpn){
         auto& entry = pageTbl_.getEntry(vpn);
         entry.bufferIndex = vpn;
@@ -114,7 +110,7 @@ void MemoryManager::loadPage(u64 vpn){
     touchPage(vpn);
 }
 
-void MemoryManager::evictPage(u64 vpn, void* pageAddr){
+void MemoryManager::evictPage(u64 vpn){
     auto& entry = pageTbl_.getEntry(vpn);
 
     if(entry.dirty){
@@ -134,8 +130,6 @@ void MemoryManager::evictPage(u64 vpn, void* pageAddr){
 
         swapWriteNs += std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
     }
-
-    madvise(pageAddr, PAGE_SIZE, MADV_DONTNEED);
 
     entry.resident = false;
     entry.reference = false;
