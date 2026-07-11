@@ -7,51 +7,46 @@
 #include "runtime_gru.hpp"
 
 #include <vector>
-#include <queue>
 #include <chrono>
 
 class MemoryManager{
 public:
     explicit MemoryManager(EvictionPolicy policy = EvictionPolicy::LRU, bool learned = true);
     ~MemoryManager();
+
     void initPageTable(size_t num_pages);
-    u32 allocBuffer(u64 vpn);
-    void freeBuffer(u32 bufferSlot);
-    void* bufferData(u32 bufferSlot);
+    void* bufferData(u32 bufferIndex);
     PageTable& pageTbl();
     void touchPage(u64 vpn);
-    void loadPage(u64 vpn, u32 bufferSlot);
+    void loadPage(u64 vpn, void* pageAddr);
+    void evictPage(u64 vpn, void* pageAddr);
+    u64 chooseLearnedVictim();
+    float computeLearnedScore(u64 vpn);
     void addFaultLatencyNs(uint64_t ns);
     uint64_t faultLatencyNs() const;
     uint64_t swapWriteLatencyNs() const;
     uint64_t swapReadLatencyNs() const;
     uint64_t learnedEvictionCount() const;
     bool learnedEvictionActive() const;
+    bool hasFreeResidentSlot() const;
+    u32 residentPageCount() const;
 
 private:
-    u64 chooseLearnedVictim();
-    float computeLearnedScore(u64 vpn);
-
     PageTable pageTbl_;
-
-    // This is the pool of page-sized buffers used before UFFDIO_COPY
-    std::vector<u8> pageBufferPool;
-    std::queue<u32> freeBuffers;
-
+    std::vector<u8> bufferPool;
     SwapManager swapMgr;
     EvictionManager eviction;
     RuntimeGRU learnedPredictor;
-
     bool learnedEvictionEnabled;
-
     float learnedRecencyWeight;
     float learnedFrequencyWeight;
     float learnedPredictionWeight;
-
     u64 accessCounter;
+    u32 residentPages;
+
+    static constexpr u32 MAX_RESIDENT_PAGES = NUM_FRAMES;
 
     uint64_t learnedEvictions;
-
     uint64_t faultNs;
     uint64_t swapWriteNs;
     uint64_t swapReadNs;
