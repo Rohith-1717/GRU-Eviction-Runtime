@@ -17,9 +17,9 @@ public:
     void initPageTable(size_t num_pages);
     void* bufferData(u32 bufferIndex);
     PageTable& pageTbl();
-    void touchPage(u64 vpn);
-    void loadPage(u64 vpn, void* pageAddr);
-    void evictPage(u64 vpn, void* pageAddr);
+    void touchPage(u64 vpn);    
+    void loadPage(u64 vpn);
+    void evictPage(u64 vpn);
     u64 chooseLearnedVictim();
     float computeLearnedScore(u64 vpn);
     void addFaultLatencyNs(uint64_t ns);
@@ -43,11 +43,12 @@ private:
     float learnedPredictionWeight;
     u64 accessCounter;
     u32 residentPages;
-
     static constexpr u32 MAX_RESIDENT_PAGES = NUM_FRAMES;
-
     uint64_t learnedEvictions;
+
     uint64_t faultNs;
+
     uint64_t swapWriteNs;
+
     uint64_t swapReadNs;
 };
